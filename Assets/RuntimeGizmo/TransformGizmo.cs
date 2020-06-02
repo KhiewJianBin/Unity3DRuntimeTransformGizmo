@@ -13,7 +13,11 @@ namespace RuntimeGizmos
 	[RequireComponent(typeof(Camera))]
 	public class TransformGizmo : MonoBehaviour
 	{
+        //Hide space and objectRelative property in default inspector. They will be drawn by custom editor script - TransformGizmoEditor
+        [HideInInspector]
 		public TransformSpace space = TransformSpace.Global;
+        [HideInInspector]
+        public Transform objectRelativeTransform;
 		public TransformType transformType = TransformType.Move;
 		public TransformPivot pivot = TransformPivot.Pivot;
 		public CenterType centerType = CenterType.All;
@@ -925,11 +929,17 @@ namespace RuntimeGizmos
 		{
 			AxisInfo currentAxisInfo = axisInfo;
 
-			if(isTransforming && GetProperTransformSpace() == TransformSpace.Global && translatingType == TransformType.Rotate)
+			if(isTransforming && translatingType == TransformType.Rotate)
 			{
-				currentAxisInfo.xDirection = totalRotationAmount * Vector3.right;
-				currentAxisInfo.yDirection = totalRotationAmount * Vector3.up;
-				currentAxisInfo.zDirection = totalRotationAmount * Vector3.forward;
+                if (GetProperTransformSpace() == TransformSpace.Global) {
+                    currentAxisInfo.xDirection = totalRotationAmount * Vector3.right;
+                    currentAxisInfo.yDirection = totalRotationAmount * Vector3.up;
+                    currentAxisInfo.zDirection = totalRotationAmount * Vector3.forward;
+                } else if (GetProperTransformSpace() == TransformSpace.ObjectRelative) {
+                    currentAxisInfo.xDirection = totalRotationAmount * objectRelativeTransform.right;
+                    currentAxisInfo.yDirection = totalRotationAmount * objectRelativeTransform.up;
+                    currentAxisInfo.zDirection = totalRotationAmount * objectRelativeTransform.forward;
+                }
 			}
 
 			return currentAxisInfo;
@@ -1091,8 +1101,13 @@ namespace RuntimeGizmos
 		{
 			if(mainTargetRoot != null)
 			{
-				axisInfo.Set(mainTargetRoot, pivotPoint, GetProperTransformSpace());
-			}
+                TransformSpace tfSpace = GetProperTransformSpace();
+                if (tfSpace == TransformSpace.ObjectRelative) {
+                    axisInfo.Set(objectRelativeTransform, pivotPoint, tfSpace);
+                } else {
+                    axisInfo.Set(mainTargetRoot, pivotPoint, tfSpace);
+                }
+            }
 		}
 
 		//This helps keep the size consistent no matter how far we are from it.
