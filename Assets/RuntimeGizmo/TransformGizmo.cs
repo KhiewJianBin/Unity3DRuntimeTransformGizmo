@@ -90,7 +90,7 @@ namespace RuntimeGizmos
 		public Action onCheckForSelectedAxis;
 		public Action onDrawCustomGizmo;
 
-		public Camera myCamera {get; private set;}
+		public Camera myCamera {get; set;}
 
 		public bool isTransforming {get; private set;}
 		public float totalScaleAmount {get; private set;}
