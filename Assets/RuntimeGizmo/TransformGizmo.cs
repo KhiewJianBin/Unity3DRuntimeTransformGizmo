@@ -13,6 +13,57 @@ namespace RuntimeGizmos
 	[RequireComponent(typeof(Camera))]
 	public class TransformGizmo : MonoBehaviour
 	{
+
+        #region SINGLETON
+        // Check to see if we're about to be destroyed.
+        private static bool m_ShuttingDown = false;
+        private static object m_Lock = new object();
+        private static TransformGizmo m_Instance;
+
+        /// <summary>
+        /// Access singleton instance through this propriety.
+        /// </summary>
+        public static TransformGizmo Instance {
+            get {
+                if (m_ShuttingDown) {
+                    Debug.LogWarning("[Singleton] Instance '" + typeof(TransformGizmo) +
+                        "' already destroyed. Returning null.");
+                    return null;
+                }
+
+                lock (m_Lock) {
+                    if (m_Instance == null) {
+                        // Search for existing instance.
+                        m_Instance = (TransformGizmo) FindObjectOfType(typeof(TransformGizmo));
+
+                        // Create new instance if one doesn't already exist.
+                        if (m_Instance == null) {
+                            // Need to create a new GameObject to attach the singleton to.
+                            GameObject singletonObject = new GameObject();
+                            m_Instance = singletonObject.AddComponent<TransformGizmo>();
+                            singletonObject.name = typeof(TransformGizmo).ToString() + " (Singleton)";
+
+                            // Make instance persistent.
+                            DontDestroyOnLoad(singletonObject);
+                        }
+                    }
+
+                    return m_Instance;
+                }
+            }
+        }
+
+        private void OnApplicationQuit() {
+            m_ShuttingDown = true;
+        }
+
+
+        //private void OnDestroy() {
+        //    m_ShuttingDown = true;
+        //}
+        #endregion
+
+
         //Hide space and objectRelative property in default inspector. They will be drawn by custom editor script - TransformGizmoEditor
         [HideInInspector]
 		public TransformSpace space = TransformSpace.Global;
@@ -168,7 +219,7 @@ namespace RuntimeGizmos
 				SetNearAxis();
 			}
 			
-			GetTarget();
+			//GetTarget();
 
 			if(mainTargetRoot == null) return;
 			
