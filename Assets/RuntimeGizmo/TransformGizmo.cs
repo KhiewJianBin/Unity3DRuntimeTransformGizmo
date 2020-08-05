@@ -727,7 +727,7 @@ namespace RuntimeGizmos
 				if(addCommand) UndoRedoManager.Insert(new AddTargetCommand(this, target, targetRootsOrdered));
 
 				AddTargetRoot(target);
-				AddTargetHighlightedRenderers(target);
+				//AddTargetHighlightedRenderers(target);
 
 				SetPivotPoint();
 			}
@@ -752,8 +752,12 @@ namespace RuntimeGizmos
 		{
 			if(addCommand) UndoRedoManager.Insert(new ClearTargetsCommand(this, targetRootsOrdered));
 
-			ClearAllHighlightedRenderers();
-			targetRoots.Clear();
+            //ClearAllHighlightedRenderers();
+            foreach (var target in targetRoots) {
+                target.Key.SendMessage("ClearGizmo");
+            }
+
+            targetRoots.Clear();
 			targetRootsOrdered.Clear();
 			children.Clear();
 		}
