@@ -10,7 +10,6 @@ namespace RuntimeGizmos
 	//you should call ClearTargets before doing so just to be sure nothing unexpected happens... as well as call UndoRedoManager.Clear()
 	//For example, if you select an object that has children, move the children elsewhere, deselect the original object, then try to add those old children to the selection, I think it wont work.
 
-	[RequireComponent(typeof(Camera))]
 	public class TransformGizmo : MonoBehaviour
 	{
 
@@ -140,9 +139,7 @@ namespace RuntimeGizmos
 
 		public Action onCheckForSelectedAxis;
 		public Action onDrawCustomGizmo;
-
-		public Camera myCamera {get; set;}
-
+        
 		public bool isTransforming {get; private set;}
 		public float totalScaleAmount {get; private set;}
 		public Quaternion totalRotationAmount {get; private set;}
@@ -155,6 +152,8 @@ namespace RuntimeGizmos
 		Vector3 totalCenterPivotPoint;
 
 		public Transform mainTargetRoot {get {return (targetRootsOrdered.Count > 0) ? (useFirstSelectedAsMain) ? targetRootsOrdered[0] : targetRootsOrdered[targetRootsOrdered.Count - 1] : null;}}
+
+        public Vector3 movement;
 
 		AxisInfo axisInfo;
 		Axis nearAxis = Axis.None;
@@ -185,17 +184,18 @@ namespace RuntimeGizmos
 
 		void Awake()
 		{
-			myCamera = GetComponent<Camera>();
 			SetMaterial();
 		}
 
-		void OnEnable()
+        void OnEnable()
 		{
+            Camera.onPostRender += OnCameraPostRender;
 			forceUpdatePivotCoroutine = StartCoroutine(ForceUpdatePivotPointAtEndOfFrame());
 		}
 
-		void OnDisable()
+        void OnDisable()
 		{
+            Camera.onPostRender -= OnCameraPostRender;
 			ClearTargets(); //Just so things gets cleaned up, such as removing any materials we placed on objects.
 
 			StopCoroutine(forceUpdatePivotCoroutine);
@@ -241,8 +241,8 @@ namespace RuntimeGizmos
 			}
 		}
 
-		void OnPostRender()
-		{
+        private void OnCameraPostRender(Camera cam) {
+
 			if(mainTargetRoot == null || manuallyHandleGizmo) return;
 
 			lineMaterial.SetPass(0);
@@ -441,7 +441,7 @@ namespace RuntimeGizmos
 
 			while(!Input.GetMouseButtonUp(0))
 			{
-				Ray mouseRay = myCamera.ScreenPointToRay(Input.mousePosition);
+				Ray mouseRay = Camera.main.ScreenPointToRay(Input.mousePosition);
 				Vector3 mousePosition = Geometry.LinePlaneIntersect(mouseRay.origin, mouseRay.direction, originalPivot, planeNormal);
 				bool isSnapping = Input.GetKey(translationSnapping);
 
@@ -449,7 +449,7 @@ namespace RuntimeGizmos
 				{
 					if(transType == TransformType.Move)
 					{
-						Vector3 movement = Vector3.zero;
+						movement = Vector3.zero;
 
 						if(hasTranslatingAxisPlane)
 						{
@@ -496,14 +496,13 @@ namespace RuntimeGizmos
 								{
 									movement = currentSnapMovementAmount.normalized * snapAmount;
 									currentSnapMovementAmount = currentSnapMovementAmount.normalized * remainder;
-								}
-							}
+                                }
+                            }
 						}
 
 						for(int i = 0; i < targetRootsOrdered.Count; i++)
 						{
 							Transform target = targetRootsOrdered[i];
-
 							target.Translate(movement, Space.World);
 						}
 
@@ -692,7 +691,7 @@ namespace RuntimeGizmos
 				bool isRemoving = Input.GetKey(RemoveSelection);
 
 				RaycastHit hitInfo; 
-				if(Physics.Raycast(myCamera.ScreenPointToRay(Input.mousePosition), out hitInfo, Mathf.Infinity, selectionMask))
+				if(Physics.Raycast(Camera.main.ScreenPointToRay(Input.mousePosition), out hitInfo, Mathf.Infinity, selectionMask))
 				{
 					Transform target = hitInfo.transform;
 
@@ -1079,7 +1078,7 @@ namespace RuntimeGizmos
 			else if(zClosestDistance <= minSelectedDistanceCheck && zClosestDistance <= xClosestDistance && zClosestDistance <= yClosestDistance) SetTranslatingAxis(type, Axis.Z);
 			else if(type == TransformType.Rotate && mainTargetRoot != null)
 			{
-				Ray mouseRay = myCamera.ScreenPointToRay(Input.mousePosition);
+				Ray mouseRay = Camera.main.ScreenPointToRay(Input.mousePosition);
 				Vector3 mousePlaneHit = Geometry.LinePlaneIntersect(mouseRay.origin, mouseRay.direction, pivotPoint, (transform.position - pivotPoint).normalized);
 				if((pivotPoint - mousePlaneHit).sqrMagnitude <= (GetHandleLength(TransformType.Rotate)).Squared()) SetTranslatingAxis(type, Axis.Any);
 			}
@@ -1087,7 +1086,7 @@ namespace RuntimeGizmos
 
 		float ClosestDistanceFromMouseToLines(List<Vector3> lines)
 		{
-			Ray mouseRay = myCamera.ScreenPointToRay(Input.mousePosition);
+			Ray mouseRay = Camera.main.ScreenPointToRay(Input.mousePosition);
 
 			float closestDistance = float.MaxValue;
 			for(int i = 0; i + 1 < lines.Count; i++)
@@ -1108,7 +1107,7 @@ namespace RuntimeGizmos
 
 			if(planePoints.Count >= 4)
 			{
-				Ray mouseRay = myCamera.ScreenPointToRay(Input.mousePosition);
+				Ray mouseRay = Camera.main.ScreenPointToRay(Input.mousePosition);
 
 				for(int i = 0; i < planePoints.Count; i += 4)
 				{
@@ -1132,27 +1131,27 @@ namespace RuntimeGizmos
 			return closestDistance;
 		}
 
-		//float DistanceFromMouseToPlane(List<Vector3> planeLines)
-		//{
-		//	if(planeLines.Count >= 4)
-		//	{
-		//		Ray mouseRay = myCamera.ScreenPointToRay(Input.mousePosition);
-		//		Plane plane = new Plane(planeLines[0], planeLines[1], planeLines[2]);
+        //float DistanceFromMouseToPlane(List<Vector3> planeLines)
+        //{
+        //	if(planeLines.Count >= 4)
+        //	{
+        //		Ray mouseRay = Camera.main.ScreenPointToRay(Input.mousePosition);
+        //		Plane plane = new Plane(planeLines[0], planeLines[1], planeLines[2]);
 
-		//		float distanceToPlane;
-		//		if(plane.Raycast(mouseRay, out distanceToPlane))
-		//		{
-		//			Vector3 pointOnPlane = mouseRay.origin + (mouseRay.direction * distanceToPlane);
-		//			Vector3 planeCenter = (planeLines[0] + planeLines[1] + planeLines[2] + planeLines[3]) / 4f;
+        //		float distanceToPlane;
+        //		if(plane.Raycast(mouseRay, out distanceToPlane))
+        //		{
+        //			Vector3 pointOnPlane = mouseRay.origin + (mouseRay.direction * distanceToPlane);
+        //			Vector3 planeCenter = (planeLines[0] + planeLines[1] + planeLines[2] + planeLines[3]) / 4f;
 
-		//			return Vector3.Distance(planeCenter, pointOnPlane);
-		//		}
-		//	}
+        //			return Vector3.Distance(planeCenter, pointOnPlane);
+        //		}
+        //	}
 
-		//	return float.MaxValue;
-		//}
+        //	return float.MaxValue;
+        //}
 
-		void SetAxisInfo()
+        void SetAxisInfo()
 		{
 			if(mainTargetRoot != null)
 			{
@@ -1170,8 +1169,8 @@ namespace RuntimeGizmos
 		{
 			if(mainTargetRoot == null) return 0f;
 
-			if(myCamera.orthographic) return Mathf.Max(.01f, myCamera.orthographicSize * 2f);
-			return Mathf.Max(.01f, Mathf.Abs(ExtVector3.MagnitudeInDirection(pivotPoint - transform.position, myCamera.transform.forward)));
+			if(Camera.main.orthographic) return Mathf.Max(.01f, Camera.main.orthographicSize * 2f);
+			return Mathf.Max(.01f, Mathf.Abs(ExtVector3.MagnitudeInDirection(pivotPoint - transform.position, Camera.main.transform.forward)));
 		}
 
 		void SetLines()
@@ -1221,7 +1220,7 @@ namespace RuntimeGizmos
 
 			if(TranslatingTypeContains(TransformType.Move))
 			{
-				Vector3 pivotToCamera = myCamera.transform.position - pivotPoint;
+				Vector3 pivotToCamera = Camera.main.transform.position - pivotPoint;
 				float cameraXSign = Mathf.Sign(Vector3.Dot(axisInfo.xDirection, pivotToCamera));
 				float cameraYSign = Mathf.Sign(Vector3.Dot(axisInfo.yDirection, pivotToCamera));
 				float cameraZSign = Mathf.Sign(Vector3.Dot(axisInfo.zDirection, pivotToCamera));
