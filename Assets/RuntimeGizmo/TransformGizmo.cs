@@ -139,7 +139,8 @@ namespace RuntimeGizmos
 
 		public Action onCheckForSelectedAxis;
 		public Action onDrawCustomGizmo;
-        
+
+        public Camera myCamera;
 		public bool isTransforming {get; private set;}
 		public float totalScaleAmount {get; private set;}
 		public Quaternion totalRotationAmount {get; private set;}
@@ -184,6 +185,7 @@ namespace RuntimeGizmos
 
 		void Awake()
 		{
+            myCamera = Camera.main;
 			SetMaterial();
 		}
 
@@ -425,7 +427,7 @@ namespace RuntimeGizmos
 
 			Vector3 otherAxis1, otherAxis2;
 			Vector3 axis = GetNearAxisDirection(out otherAxis1, out otherAxis2);
-			Vector3 planeNormal = hasTranslatingAxisPlane ? axis : (transform.position - originalPivot).normalized;
+			Vector3 planeNormal = hasTranslatingAxisPlane ? axis : (myCamera.transform.position - originalPivot).normalized;
 			Vector3 projectedAxis = Vector3.ProjectOnPlane(axis, planeNormal).normalized;
 			Vector3 previousMousePosition = Vector3.zero;
 
@@ -441,7 +443,7 @@ namespace RuntimeGizmos
 
 			while(!Input.GetMouseButtonUp(0))
 			{
-				Ray mouseRay = Camera.main.ScreenPointToRay(Input.mousePosition);
+				Ray mouseRay = myCamera.ScreenPointToRay(Input.mousePosition);
 				Vector3 mousePosition = Geometry.LinePlaneIntersect(mouseRay.origin, mouseRay.direction, originalPivot, planeNormal);
 				bool isSnapping = Input.GetKey(translationSnapping);
 
@@ -510,7 +512,7 @@ namespace RuntimeGizmos
 					}
 					else if(transType == TransformType.Scale)
 					{
-						Vector3 projected = (nearAxis == Axis.Any) ? transform.right : projectedAxis;
+						Vector3 projected = (nearAxis == Axis.Any) ? myCamera.transform.right : projectedAxis;
 						float scaleAmount = ExtVector3.MagnitudeInDirection(mousePosition - previousMousePosition, projected) * scaleSpeedMultiplier;
 						
 						if(isSnapping && scaleSnap > 0)
@@ -567,7 +569,7 @@ namespace RuntimeGizmos
 
 						if(nearAxis == Axis.Any)
 						{
-							Vector3 rotation = transform.TransformDirection(new Vector3(Input.GetAxis("Mouse Y"), -Input.GetAxis("Mouse X"), 0));
+							Vector3 rotation = myCamera.transform.TransformDirection(new Vector3(Input.GetAxis("Mouse Y"), -Input.GetAxis("Mouse X"), 0));
 							Quaternion.Euler(rotation).ToAngleAxis(out rotateAmount, out rotationAxis);
 							rotateAmount *= allRotateSpeedMultiplier;
 						}else{
@@ -691,7 +693,7 @@ namespace RuntimeGizmos
 				bool isRemoving = Input.GetKey(RemoveSelection);
 
 				RaycastHit hitInfo; 
-				if(Physics.Raycast(Camera.main.ScreenPointToRay(Input.mousePosition), out hitInfo, Mathf.Infinity, selectionMask))
+				if(Physics.Raycast(myCamera.ScreenPointToRay(Input.mousePosition), out hitInfo, Mathf.Infinity, selectionMask))
 				{
 					Transform target = hitInfo.transform;
 
@@ -1078,15 +1080,15 @@ namespace RuntimeGizmos
 			else if(zClosestDistance <= minSelectedDistanceCheck && zClosestDistance <= xClosestDistance && zClosestDistance <= yClosestDistance) SetTranslatingAxis(type, Axis.Z);
 			else if(type == TransformType.Rotate && mainTargetRoot != null)
 			{
-				Ray mouseRay = Camera.main.ScreenPointToRay(Input.mousePosition);
-				Vector3 mousePlaneHit = Geometry.LinePlaneIntersect(mouseRay.origin, mouseRay.direction, pivotPoint, (transform.position - pivotPoint).normalized);
+				Ray mouseRay = myCamera.ScreenPointToRay(Input.mousePosition);
+				Vector3 mousePlaneHit = Geometry.LinePlaneIntersect(mouseRay.origin, mouseRay.direction, pivotPoint, (myCamera.transform.position - pivotPoint).normalized);
 				if((pivotPoint - mousePlaneHit).sqrMagnitude <= (GetHandleLength(TransformType.Rotate)).Squared()) SetTranslatingAxis(type, Axis.Any);
 			}
 		}
 
 		float ClosestDistanceFromMouseToLines(List<Vector3> lines)
 		{
-			Ray mouseRay = Camera.main.ScreenPointToRay(Input.mousePosition);
+			Ray mouseRay = myCamera.ScreenPointToRay(Input.mousePosition);
 
 			float closestDistance = float.MaxValue;
 			for(int i = 0; i + 1 < lines.Count; i++)
@@ -1107,7 +1109,7 @@ namespace RuntimeGizmos
 
 			if(planePoints.Count >= 4)
 			{
-				Ray mouseRay = Camera.main.ScreenPointToRay(Input.mousePosition);
+				Ray mouseRay = myCamera.ScreenPointToRay(Input.mousePosition);
 
 				for(int i = 0; i < planePoints.Count; i += 4)
 				{
@@ -1135,7 +1137,7 @@ namespace RuntimeGizmos
         //{
         //	if(planeLines.Count >= 4)
         //	{
-        //		Ray mouseRay = Camera.main.ScreenPointToRay(Input.mousePosition);
+        //		Ray mouseRay = myCamera.ScreenPointToRay(Input.mousePosition);
         //		Plane plane = new Plane(planeLines[0], planeLines[1], planeLines[2]);
 
         //		float distanceToPlane;
@@ -1169,8 +1171,8 @@ namespace RuntimeGizmos
 		{
 			if(mainTargetRoot == null) return 0f;
 
-			if(Camera.main.orthographic) return Mathf.Max(.01f, Camera.main.orthographicSize * 2f);
-			return Mathf.Max(.01f, Mathf.Abs(ExtVector3.MagnitudeInDirection(pivotPoint - transform.position, Camera.main.transform.forward)));
+			if(myCamera.orthographic) return Mathf.Max(.01f, myCamera.orthographicSize * 2f);
+			return Mathf.Max(.01f, Mathf.Abs(ExtVector3.MagnitudeInDirection(pivotPoint - myCamera.transform.position, myCamera.transform.forward)));
 		}
 
 		void SetLines()
@@ -1220,7 +1222,7 @@ namespace RuntimeGizmos
 
 			if(TranslatingTypeContains(TransformType.Move))
 			{
-				Vector3 pivotToCamera = Camera.main.transform.position - pivotPoint;
+				Vector3 pivotToCamera = myCamera.transform.position - pivotPoint;
 				float cameraXSign = Mathf.Sign(Vector3.Dot(axisInfo.xDirection, pivotToCamera));
 				float cameraYSign = Mathf.Sign(Vector3.Dot(axisInfo.yDirection, pivotToCamera));
 				float cameraZSign = Mathf.Sign(Vector3.Dot(axisInfo.zDirection, pivotToCamera));
@@ -1356,7 +1358,7 @@ namespace RuntimeGizmos
 				AddCircle(pivotPoint, axisInfo.xDirection, circleLength, axisVectors.x);
 				AddCircle(pivotPoint, axisInfo.yDirection, circleLength, axisVectors.y);
 				AddCircle(pivotPoint, axisInfo.zDirection, circleLength, axisVectors.z);
-				AddCircle(pivotPoint, (pivotPoint - transform.position).normalized, circleLength, axisVectors.all, false);
+				AddCircle(pivotPoint, (pivotPoint - myCamera.transform.position).normalized, circleLength, axisVectors.all, false);
 			}
 		}
 
@@ -1384,7 +1386,7 @@ namespace RuntimeGizmos
 			Vector3 nextPoint = Vector3.zero;
 			float multiplier = 360f / circleDetail;
 
-			Plane plane = new Plane((transform.position - pivotPoint).normalized, pivotPoint);
+			Plane plane = new Plane((myCamera.transform.position - pivotPoint).normalized, pivotPoint);
 
 			float circleHandleWidth = handleWidth * GetDistanceMultiplier();
 
