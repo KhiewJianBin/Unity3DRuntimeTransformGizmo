@@ -3,6 +3,8 @@ using UnityEngine;
 using System.Collections.Generic;
 using System.Collections;
 using CommandUndoRedo;
+using UnityEngine.Events;
+using UnityEngine.EventSystems;
 
 namespace RuntimeGizmos
 {
@@ -183,7 +185,17 @@ namespace RuntimeGizmos
 		static Material lineMaterial;
 		static Material outlineMaterial;
 
-		void Awake()
+        public class TransformEvent : UnityEvent<Transform> { }
+        public class TransformTypeChangedEvent : UnityEvent<TransformType> { }
+        public TransformEvent transformAddedEvent = new TransformEvent();
+        public TransformEvent transformRemovedEvent = new TransformEvent();
+        public TransformEvent transformClearAndAddedEvent = new TransformEvent();
+        public TransformTypeChangedEvent transformTypeChanged = new TransformTypeChangedEvent();
+
+        public UnityEvent transformClearedEvent = new UnityEvent();
+        public UnityEvent transformUpdateEvent = new UnityEvent(); 
+
+        void Awake()
 		{
             myCamera = Camera.main;
 			SetMaterial();
@@ -306,25 +318,27 @@ namespace RuntimeGizmos
 			return color;
 		}
 
-		void HandleUndoRedo()
-		{
-			if(maxUndoStored != UndoRedoManager.maxUndoStored) { UndoRedoManager.maxUndoStored = maxUndoStored; }
+        void HandleUndoRedo()
+        {
+            if (maxUndoStored != UndoRedoManager.maxUndoStored) { UndoRedoManager.maxUndoStored = maxUndoStored; }
 
-			if(Input.GetKey(ActionKey))
-			{
-				if(Input.GetKeyDown(UndoAction))
-				{
-					UndoRedoManager.Undo();
-				}
-				else if(Input.GetKeyDown(RedoAction))
-				{
-					UndoRedoManager.Redo();
-				}
-			}
-		}
+            if (Input.GetKey(ActionKey))
+            {
+                if (Input.GetKeyDown(UndoAction))
+                {
+                    UndoRedoManager.Undo();
+                    transformUpdateEvent.Invoke();
+                }
+                else if (Input.GetKeyDown(RedoAction))
+                {
+                    UndoRedoManager.Redo();
+                    transformUpdateEvent.Invoke();
+                }
+            }
+        }
 
-		//We only support scaling in local space.
-		public TransformSpace GetProperTransformSpace()
+        //We only support scaling in local space.
+        public TransformSpace GetProperTransformSpace()
 		{
 			return transformType == TransformType.Scale ? TransformSpace.Local : space;
 		}
@@ -360,53 +374,69 @@ namespace RuntimeGizmos
 			return length;
 		}
 
-		void SetSpaceAndType()
-		{
-			if(Input.GetKey(ActionKey)) return;
+        void SetSpaceAndType()
+        {
+            if (Input.GetKey(ActionKey)) return;
 
-			if(Input.GetKeyDown(SetMoveType)) transformType = TransformType.Move;
-			else if(Input.GetKeyDown(SetRotateType)) transformType = TransformType.Rotate;
-			else if(Input.GetKeyDown(SetScaleType)) transformType = TransformType.Scale;
-			//else if(Input.GetKeyDown(SetRectToolType)) type = TransformType.RectTool;
-			else if(Input.GetKeyDown(SetAllTransformType)) transformType = TransformType.All;
+            if (Input.GetKeyDown(SetMoveType))
+            {
+                transformType = TransformType.Move;
+                transformTypeChanged.Invoke(transformType);
+            }
+            else if (Input.GetKeyDown(SetRotateType))
+            {
+                transformType = TransformType.Rotate;
+                transformTypeChanged.Invoke(transformType);
+            }
+            else if (Input.GetKeyDown(SetScaleType))
+            {
+                transformType = TransformType.Scale;
+                transformTypeChanged.Invoke(transformType);
+            }
+            //else if(Input.GetKeyDown(SetRectToolType)) type = TransformType.RectTool;
+            else if (Input.GetKeyDown(SetAllTransformType))
+            {
+                transformType = TransformType.All;
+                transformTypeChanged.Invoke(transformType);
+            }
 
-			if(!isTransforming) translatingType = transformType;
+            if (!isTransforming) translatingType = transformType;
 
-			if(Input.GetKeyDown(SetPivotModeToggle))
-			{
-				if(pivot == TransformPivot.Pivot) pivot = TransformPivot.Center;
-				else if(pivot == TransformPivot.Center) pivot = TransformPivot.Pivot;
+            if (Input.GetKeyDown(SetPivotModeToggle))
+            {
+                if (pivot == TransformPivot.Pivot) pivot = TransformPivot.Center;
+                else if (pivot == TransformPivot.Center) pivot = TransformPivot.Pivot;
 
-				SetPivotPoint();
-			}
+                SetPivotPoint();
+            }
 
-			if(Input.GetKeyDown(SetCenterTypeToggle))
-			{
-				if(centerType == CenterType.All) centerType = CenterType.Solo;
-				else if(centerType == CenterType.Solo) centerType = CenterType.All;
+            if (Input.GetKeyDown(SetCenterTypeToggle))
+            {
+                if (centerType == CenterType.All) centerType = CenterType.Solo;
+                else if (centerType == CenterType.Solo) centerType = CenterType.All;
 
-				SetPivotPoint();
-			}
+                SetPivotPoint();
+            }
 
-			if(Input.GetKeyDown(SetSpaceToggle))
-			{
-				if(space == TransformSpace.Global) space = TransformSpace.Local;
-				else if(space == TransformSpace.Local) space = TransformSpace.Global;
-			}
+            if (Input.GetKeyDown(SetSpaceToggle))
+            {
+                if (space == TransformSpace.Global) space = TransformSpace.Local;
+                else if (space == TransformSpace.Local) space = TransformSpace.Global;
+            }
 
-			if(Input.GetKeyDown(SetScaleTypeToggle))
-			{
-				if(scaleType == ScaleType.FromPoint) scaleType = ScaleType.FromPointOffset;
-				else if(scaleType == ScaleType.FromPointOffset) scaleType = ScaleType.FromPoint;
-			}
+            if (Input.GetKeyDown(SetScaleTypeToggle))
+            {
+                if (scaleType == ScaleType.FromPoint) scaleType = ScaleType.FromPointOffset;
+                else if (scaleType == ScaleType.FromPointOffset) scaleType = ScaleType.FromPoint;
+            }
 
-			if(transformType == TransformType.Scale)
-			{
-				if(pivot == TransformPivot.Pivot) scaleType = ScaleType.FromPoint; //FromPointOffset can be inaccurate and should only really be used in Center mode if desired.
-			}
-		}
+            if (transformType == TransformType.Scale)
+            {
+                if (pivot == TransformPivot.Pivot) scaleType = ScaleType.FromPoint; //FromPointOffset can be inaccurate and should only really be used in Center mode if desired.
+            }
+        }
 
-		void TransformSelected()
+        void TransformSelected()
 		{
 			if(mainTargetRoot != null)
 			{
@@ -635,9 +665,11 @@ namespace RuntimeGizmos
 			SetTranslatingAxis(transformType, Axis.None);
 
 			SetPivotPoint();
-		}
 
-		float CalculateSnapAmount(float snapValue, float currentAmount, out float remainder)
+            transformUpdateEvent.Invoke();
+        }
+
+        float CalculateSnapAmount(float snapValue, float currentAmount, out float remainder)
 		{
 			remainder = 0;
 			if(snapValue <= 0) return currentAmount;
@@ -684,41 +716,47 @@ namespace RuntimeGizmos
 
 			return Vector3.zero;
 		}
-	
-		void GetTarget()
-		{
-			if(nearAxis == Axis.None && Input.GetMouseButtonDown(0))
-			{
-				bool isAdding = Input.GetKey(AddSelection);
-				bool isRemoving = Input.GetKey(RemoveSelection);
 
-				RaycastHit hitInfo; 
-				if(Physics.Raycast(myCamera.ScreenPointToRay(Input.mousePosition), out hitInfo, Mathf.Infinity, selectionMask))
-				{
-					Transform target = hitInfo.transform;
+        void GetTarget()
+        {
+            if (nearAxis == Axis.None && Input.GetMouseButtonDown(0) && !EventSystem.current.IsPointerOverGameObject())
+            {
+                bool isAdding = Input.GetKey(AddSelection);
+                bool isRemoving = Input.GetKey(RemoveSelection);
 
-					if(isAdding)
-					{
-						AddTarget(target);
-					}
-					else if(isRemoving)
-					{
-						RemoveTarget(target);
-					}
-					else if(!isAdding && !isRemoving)
-					{
-						ClearAndAddTarget(target);
-					}
-				}else{
-					if(!isAdding && !isRemoving)
-					{
-						ClearTargets();
-					}
-				}
-			}
-		}
+                RaycastHit hitInfo;
+                if (Physics.Raycast(myCamera.ScreenPointToRay(Input.mousePosition), out hitInfo, Mathf.Infinity, selectionMask))
+                {
+                    Transform target = hitInfo.transform;
 
-		public void AddTarget(Transform target, bool addCommand = true)
+                    if (isAdding)
+                    {
+                        AddTarget(target);
+                        transformAddedEvent.Invoke(target);
+                    }
+                    else if (isRemoving)
+                    {
+                        RemoveTarget(target);
+                        transformRemovedEvent.Invoke(target);
+                    }
+                    else if (!isAdding && !isRemoving)
+                    {
+                        ClearAndAddTarget(target);
+                        transformClearAndAddedEvent.Invoke(target);
+                    }
+                }
+                else
+                {
+                    if (!isAdding && !isRemoving)
+                    {
+                        ClearTargets();
+                        transformClearedEvent.Invoke();
+                    }
+                }
+            }
+        }
+
+        public void AddTarget(Transform target, bool addCommand = true)
 		{
 			if(target != null)
 			{
