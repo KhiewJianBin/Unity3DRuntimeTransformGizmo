@@ -10,10 +10,64 @@ namespace RuntimeGizmos
 	//you should call ClearTargets before doing so just to be sure nothing unexpected happens... as well as call UndoRedoManager.Clear()
 	//For example, if you select an object that has children, move the children elsewhere, deselect the original object, then try to add those old children to the selection, I think it wont work.
 
-	[RequireComponent(typeof(Camera))]
 	public class TransformGizmo : MonoBehaviour
 	{
+
+        #region SINGLETON
+        // Check to see if we're about to be destroyed.
+        private static bool m_ShuttingDown = false;
+        private static object m_Lock = new object();
+        private static TransformGizmo m_Instance;
+
+        /// <summary>
+        /// Access singleton instance through this propriety.
+        /// </summary>
+        public static TransformGizmo Instance {
+            get {
+                if (m_ShuttingDown) {
+                    Debug.LogWarning("[Singleton] Instance '" + typeof(TransformGizmo) +
+                        "' already destroyed. Returning null.");
+                    return null;
+                }
+
+                lock (m_Lock) {
+                    if (m_Instance == null) {
+                        // Search for existing instance.
+                        m_Instance = (TransformGizmo) FindObjectOfType(typeof(TransformGizmo));
+
+                        // Create new instance if one doesn't already exist.
+                        if (m_Instance == null) {
+                            // Need to create a new GameObject to attach the singleton to.
+                            GameObject singletonObject = new GameObject();
+                            m_Instance = singletonObject.AddComponent<TransformGizmo>();
+                            singletonObject.name = typeof(TransformGizmo).ToString() + " (Singleton)";
+
+                            // Make instance persistent.
+                            DontDestroyOnLoad(singletonObject);
+                        }
+                    }
+
+                    return m_Instance;
+                }
+            }
+        }
+
+        private void OnApplicationQuit() {
+            m_ShuttingDown = true;
+        }
+
+
+        //private void OnDestroy() {
+        //    m_ShuttingDown = true;
+        //}
+        #endregion
+
+
+        //Hide space and objectRelative property in default inspector. They will be drawn by custom editor script - TransformGizmoEditor
+        [HideInInspector]
 		public TransformSpace space = TransformSpace.Global;
+        [HideInInspector]
+        public Transform objectRelativeTransform;
 		public TransformType transformType = TransformType.Move;
 		public TransformPivot pivot = TransformPivot.Pivot;
 		public CenterType centerType = CenterType.All;
@@ -86,8 +140,7 @@ namespace RuntimeGizmos
 		public Action onCheckForSelectedAxis;
 		public Action onDrawCustomGizmo;
 
-		public Camera myCamera {get; private set;}
-
+        public Camera myCamera;
 		public bool isTransforming {get; private set;}
 		public float totalScaleAmount {get; private set;}
 		public Quaternion totalRotationAmount {get; private set;}
@@ -100,6 +153,8 @@ namespace RuntimeGizmos
 		Vector3 totalCenterPivotPoint;
 
 		public Transform mainTargetRoot {get {return (targetRootsOrdered.Count > 0) ? (useFirstSelectedAsMain) ? targetRootsOrdered[0] : targetRootsOrdered[targetRootsOrdered.Count - 1] : null;}}
+
+        public Vector3 movement;
 
 		AxisInfo axisInfo;
 		Axis nearAxis = Axis.None;
@@ -130,17 +185,19 @@ namespace RuntimeGizmos
 
 		void Awake()
 		{
-			myCamera = GetComponent<Camera>();
+            myCamera = Camera.main;
 			SetMaterial();
 		}
 
-		void OnEnable()
+        void OnEnable()
 		{
+            Camera.onPostRender += OnCameraPostRender;
 			forceUpdatePivotCoroutine = StartCoroutine(ForceUpdatePivotPointAtEndOfFrame());
 		}
 
-		void OnDisable()
+        void OnDisable()
 		{
+            Camera.onPostRender -= OnCameraPostRender;
 			ClearTargets(); //Just so things gets cleaned up, such as removing any materials we placed on objects.
 
 			StopCoroutine(forceUpdatePivotCoroutine);
@@ -164,7 +221,7 @@ namespace RuntimeGizmos
 				SetNearAxis();
 			}
 			
-			GetTarget();
+			//GetTarget();
 
 			if(mainTargetRoot == null) return;
 			
@@ -186,8 +243,8 @@ namespace RuntimeGizmos
 			}
 		}
 
-		void OnPostRender()
-		{
+        private void OnCameraPostRender(Camera cam) {
+
 			if(mainTargetRoot == null || manuallyHandleGizmo) return;
 
 			lineMaterial.SetPass(0);
@@ -370,7 +427,7 @@ namespace RuntimeGizmos
 
 			Vector3 otherAxis1, otherAxis2;
 			Vector3 axis = GetNearAxisDirection(out otherAxis1, out otherAxis2);
-			Vector3 planeNormal = hasTranslatingAxisPlane ? axis : (transform.position - originalPivot).normalized;
+			Vector3 planeNormal = hasTranslatingAxisPlane ? axis : (myCamera.transform.position - originalPivot).normalized;
 			Vector3 projectedAxis = Vector3.ProjectOnPlane(axis, planeNormal).normalized;
 			Vector3 previousMousePosition = Vector3.zero;
 
@@ -394,7 +451,7 @@ namespace RuntimeGizmos
 				{
 					if(transType == TransformType.Move)
 					{
-						Vector3 movement = Vector3.zero;
+						movement = Vector3.zero;
 
 						if(hasTranslatingAxisPlane)
 						{
@@ -441,14 +498,13 @@ namespace RuntimeGizmos
 								{
 									movement = currentSnapMovementAmount.normalized * snapAmount;
 									currentSnapMovementAmount = currentSnapMovementAmount.normalized * remainder;
-								}
-							}
+                                }
+                            }
 						}
 
 						for(int i = 0; i < targetRootsOrdered.Count; i++)
 						{
 							Transform target = targetRootsOrdered[i];
-
 							target.Translate(movement, Space.World);
 						}
 
@@ -456,7 +512,7 @@ namespace RuntimeGizmos
 					}
 					else if(transType == TransformType.Scale)
 					{
-						Vector3 projected = (nearAxis == Axis.Any) ? transform.right : projectedAxis;
+						Vector3 projected = (nearAxis == Axis.Any) ? myCamera.transform.right : projectedAxis;
 						float scaleAmount = ExtVector3.MagnitudeInDirection(mousePosition - previousMousePosition, projected) * scaleSpeedMultiplier;
 						
 						if(isSnapping && scaleSnap > 0)
@@ -513,7 +569,7 @@ namespace RuntimeGizmos
 
 						if(nearAxis == Axis.Any)
 						{
-							Vector3 rotation = transform.TransformDirection(new Vector3(Input.GetAxis("Mouse Y"), -Input.GetAxis("Mouse X"), 0));
+							Vector3 rotation = myCamera.transform.TransformDirection(new Vector3(Input.GetAxis("Mouse Y"), -Input.GetAxis("Mouse X"), 0));
 							Quaternion.Euler(rotation).ToAngleAxis(out rotateAmount, out rotationAxis);
 							rotateAmount *= allRotateSpeedMultiplier;
 						}else{
@@ -672,7 +728,7 @@ namespace RuntimeGizmos
 				if(addCommand) UndoRedoManager.Insert(new AddTargetCommand(this, target, targetRootsOrdered));
 
 				AddTargetRoot(target);
-				AddTargetHighlightedRenderers(target);
+				//AddTargetHighlightedRenderers(target);
 
 				SetPivotPoint();
 			}
@@ -697,8 +753,12 @@ namespace RuntimeGizmos
 		{
 			if(addCommand) UndoRedoManager.Insert(new ClearTargetsCommand(this, targetRootsOrdered));
 
-			ClearAllHighlightedRenderers();
-			targetRoots.Clear();
+            //ClearAllHighlightedRenderers();
+            foreach (var target in targetRoots) {
+                target.Key.SendMessage("ClearGizmo");
+            }
+
+            targetRoots.Clear();
 			targetRootsOrdered.Clear();
 			children.Clear();
 		}
@@ -925,11 +985,17 @@ namespace RuntimeGizmos
 		{
 			AxisInfo currentAxisInfo = axisInfo;
 
-			if(isTransforming && GetProperTransformSpace() == TransformSpace.Global && translatingType == TransformType.Rotate)
+			if(isTransforming && translatingType == TransformType.Rotate)
 			{
-				currentAxisInfo.xDirection = totalRotationAmount * Vector3.right;
-				currentAxisInfo.yDirection = totalRotationAmount * Vector3.up;
-				currentAxisInfo.zDirection = totalRotationAmount * Vector3.forward;
+                if (GetProperTransformSpace() == TransformSpace.Global) {
+                    currentAxisInfo.xDirection = totalRotationAmount * Vector3.right;
+                    currentAxisInfo.yDirection = totalRotationAmount * Vector3.up;
+                    currentAxisInfo.zDirection = totalRotationAmount * Vector3.forward;
+                } else if (GetProperTransformSpace() == TransformSpace.ObjectRelative) {
+                    currentAxisInfo.xDirection = totalRotationAmount * objectRelativeTransform.right;
+                    currentAxisInfo.yDirection = totalRotationAmount * objectRelativeTransform.up;
+                    currentAxisInfo.zDirection = totalRotationAmount * objectRelativeTransform.forward;
+                }
 			}
 
 			return currentAxisInfo;
@@ -1015,7 +1081,7 @@ namespace RuntimeGizmos
 			else if(type == TransformType.Rotate && mainTargetRoot != null)
 			{
 				Ray mouseRay = myCamera.ScreenPointToRay(Input.mousePosition);
-				Vector3 mousePlaneHit = Geometry.LinePlaneIntersect(mouseRay.origin, mouseRay.direction, pivotPoint, (transform.position - pivotPoint).normalized);
+				Vector3 mousePlaneHit = Geometry.LinePlaneIntersect(mouseRay.origin, mouseRay.direction, pivotPoint, (myCamera.transform.position - pivotPoint).normalized);
 				if((pivotPoint - mousePlaneHit).sqrMagnitude <= (GetHandleLength(TransformType.Rotate)).Squared()) SetTranslatingAxis(type, Axis.Any);
 			}
 		}
@@ -1067,32 +1133,37 @@ namespace RuntimeGizmos
 			return closestDistance;
 		}
 
-		//float DistanceFromMouseToPlane(List<Vector3> planeLines)
-		//{
-		//	if(planeLines.Count >= 4)
-		//	{
-		//		Ray mouseRay = myCamera.ScreenPointToRay(Input.mousePosition);
-		//		Plane plane = new Plane(planeLines[0], planeLines[1], planeLines[2]);
+        //float DistanceFromMouseToPlane(List<Vector3> planeLines)
+        //{
+        //	if(planeLines.Count >= 4)
+        //	{
+        //		Ray mouseRay = myCamera.ScreenPointToRay(Input.mousePosition);
+        //		Plane plane = new Plane(planeLines[0], planeLines[1], planeLines[2]);
 
-		//		float distanceToPlane;
-		//		if(plane.Raycast(mouseRay, out distanceToPlane))
-		//		{
-		//			Vector3 pointOnPlane = mouseRay.origin + (mouseRay.direction * distanceToPlane);
-		//			Vector3 planeCenter = (planeLines[0] + planeLines[1] + planeLines[2] + planeLines[3]) / 4f;
+        //		float distanceToPlane;
+        //		if(plane.Raycast(mouseRay, out distanceToPlane))
+        //		{
+        //			Vector3 pointOnPlane = mouseRay.origin + (mouseRay.direction * distanceToPlane);
+        //			Vector3 planeCenter = (planeLines[0] + planeLines[1] + planeLines[2] + planeLines[3]) / 4f;
 
-		//			return Vector3.Distance(planeCenter, pointOnPlane);
-		//		}
-		//	}
+        //			return Vector3.Distance(planeCenter, pointOnPlane);
+        //		}
+        //	}
 
-		//	return float.MaxValue;
-		//}
+        //	return float.MaxValue;
+        //}
 
-		void SetAxisInfo()
+        void SetAxisInfo()
 		{
 			if(mainTargetRoot != null)
 			{
-				axisInfo.Set(mainTargetRoot, pivotPoint, GetProperTransformSpace());
-			}
+                TransformSpace tfSpace = GetProperTransformSpace();
+                if (tfSpace == TransformSpace.ObjectRelative) {
+                    axisInfo.Set(objectRelativeTransform, pivotPoint, tfSpace);
+                } else {
+                    axisInfo.Set(mainTargetRoot, pivotPoint, tfSpace);
+                }
+            }
 		}
 
 		//This helps keep the size consistent no matter how far we are from it.
@@ -1101,7 +1172,7 @@ namespace RuntimeGizmos
 			if(mainTargetRoot == null) return 0f;
 
 			if(myCamera.orthographic) return Mathf.Max(.01f, myCamera.orthographicSize * 2f);
-			return Mathf.Max(.01f, Mathf.Abs(ExtVector3.MagnitudeInDirection(pivotPoint - transform.position, myCamera.transform.forward)));
+			return Mathf.Max(.01f, Mathf.Abs(ExtVector3.MagnitudeInDirection(pivotPoint - myCamera.transform.position, myCamera.transform.forward)));
 		}
 
 		void SetLines()
@@ -1287,7 +1358,7 @@ namespace RuntimeGizmos
 				AddCircle(pivotPoint, axisInfo.xDirection, circleLength, axisVectors.x);
 				AddCircle(pivotPoint, axisInfo.yDirection, circleLength, axisVectors.y);
 				AddCircle(pivotPoint, axisInfo.zDirection, circleLength, axisVectors.z);
-				AddCircle(pivotPoint, (pivotPoint - transform.position).normalized, circleLength, axisVectors.all, false);
+				AddCircle(pivotPoint, (pivotPoint - myCamera.transform.position).normalized, circleLength, axisVectors.all, false);
 			}
 		}
 
@@ -1315,7 +1386,7 @@ namespace RuntimeGizmos
 			Vector3 nextPoint = Vector3.zero;
 			float multiplier = 360f / circleDetail;
 
-			Plane plane = new Plane((transform.position - pivotPoint).normalized, pivotPoint);
+			Plane plane = new Plane((myCamera.transform.position - pivotPoint).normalized, pivotPoint);
 
 			float circleHandleWidth = handleWidth * GetDistanceMultiplier();
 
