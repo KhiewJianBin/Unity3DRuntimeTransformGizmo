@@ -1,6 +1,6 @@
 namespace RuntimeGizmos
 {
-	public enum TransformSpace {Global, Local, ObjectRelative}
+	public enum TransformSpace {Global, Local}
 	public enum TransformType {Move, Rotate, Scale /*, RectTool*/, All}
 	public enum TransformPivot {Pivot, Center}
 	public enum Axis {None, X, Y, Z, Any}

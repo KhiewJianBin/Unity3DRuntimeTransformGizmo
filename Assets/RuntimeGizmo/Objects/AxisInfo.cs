@@ -12,15 +12,18 @@ namespace RuntimeGizmos
 
 		public void Set(Transform target, Vector3 pivot, TransformSpace space)
 		{
-            if (space == TransformSpace.Global) {
-                xDirection = Vector3.right;
-                yDirection = Vector3.up;
-                zDirection = Vector3.forward;
-            } else if (space == TransformSpace.Local || space == TransformSpace.ObjectRelative) {
-                xDirection = target.right;
-                yDirection = target.up;
-                zDirection = target.forward;
-            }
+			if(space == TransformSpace.Global)
+			{
+				xDirection = Vector3.right;
+				yDirection = Vector3.up;
+				zDirection = Vector3.forward;
+			}
+			else if(space == TransformSpace.Local)
+			{
+				xDirection = target.right;
+				yDirection = target.up;
+				zDirection = target.forward;
+			}
 
 			this.pivot = pivot;
 		}
